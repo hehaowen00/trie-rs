@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests;
 
+use crate::TrieExt;
 use std::borrow::Borrow;
 use std::cmp::Ordering;
 
@@ -60,8 +61,16 @@ where
     pub fn to_parts(self) -> (Vec<K>, Option<V>, Vec<RadixNode<K, V>>) {
         (self.key, self.value, self.children)
     }
+}
 
-    pub fn get(&self, key: &[K]) -> Option<&V> {
+impl<K, V> TrieExt<K, V> for RadixNode<K, V>
+where
+    K: Clone + Ord,
+{
+    fn get<Q>(&self, key: &Q) -> Option<&V>
+    where
+        Q: Borrow<[K]>,
+    {
         let k = key.borrow();
         assert!(k.len() > 0);
 
@@ -74,6 +83,7 @@ where
             if nodes.len() == 0 {
                 return None;
             }
+
             let node_key = &nodes[i].key;
             let lcs = longest_match(node_key, &rem);
 
@@ -106,9 +116,9 @@ where
         None
     }
 
-    pub fn insert<Q>(&mut self, key: Q, value: V) -> Result<Option<V>, ()>
+    fn insert<Q>(&mut self, key: &Q, value: V) -> Result<Option<V>, ()>
     where
-        Q: Borrow<[K]>,
+        Q: Borrow<[K]> + ?Sized,
     {
         let mut nodes = &mut self.children;
         let mut k = key.borrow();
@@ -191,21 +201,25 @@ where
         Ok(None)
     }
 
-    pub fn remove(&mut self, key: &[K], prune: bool) -> Option<RadixNode<K,V>> {
+    fn remove<Q>(&mut self, key: &Q, prune: bool) -> Option<Self>
+    where
+        Q: Borrow<[K]>,
+    {
+        let key = key.borrow();
         assert!(key.len() > 0);
 
         let mut rem = key;
         let mut nodes = &mut self.children;
 
-        let mut i = 0;
+        let mut idx = 0;
 
         loop {
-            let node_key = &nodes[i].key;
+            let node_key = &nodes[idx].key;
             let lcs = longest_match(node_key, &rem);
 
             if lcs == 0 {
-                i += 1;
-                if i == nodes.len() {
+                idx += 1;
+                if idx == nodes.len() {
                     break;
                 }
                 continue;
@@ -213,18 +227,18 @@ where
 
             if node_key == rem {
                 if prune {
-                    let removed = nodes.remove(i);
+                    let removed = nodes.remove(idx);
                     return Some(removed);
                 }
 
-                match nodes[i].children.len() {
+                match nodes[idx].children.len() {
                     0 => {
-                        let removed = nodes.remove(i);
+                        let removed = nodes.remove(idx);
                         return Some(removed);
                     },
                     1 => {
                         // a node with one child is only possible if the node has a value
-                        let node = &mut nodes[i];
+                        let node = &mut nodes[idx];
 
                         let mut child = node.children.pop().unwrap();
                         let mut prefix = node.key.clone();
@@ -235,7 +249,7 @@ where
                         return Some(removed);
                     },
                     _ => {
-                        let node = &mut nodes[i];
+                        let node = &mut nodes[idx];
                         let key = node.key.clone();
                         let res = match node.value.take() {
                             Some(v) => RadixNode::from(key, v),
@@ -247,15 +261,15 @@ where
             }
 
             if node_key.len() == lcs && rem.len() > lcs {
-                nodes = &mut nodes[i].children;
+                nodes = &mut nodes[idx].children;
                 rem = &rem[lcs..];
-                i = 0;
+                idx = 0;
                 continue;
             }
 
-            i += 1;
+            idx += 1;
 
-            if i == nodes.len() {
+            if idx == nodes.len() {
                 break;
             }
         }

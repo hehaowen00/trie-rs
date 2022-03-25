@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests;
 
+use crate::TrieExt;
 use std::borrow::Borrow;
 
 #[derive(Debug)]
@@ -52,8 +53,17 @@ where
     pub fn children(&self) -> &Vec<TrieNode<K, V>> {
         &self.children
     }
+}
 
-    pub fn get(&self, key: &[K]) -> Option<&V> {
+impl<K, V> TrieExt<K, V> for TrieNode<K, V>
+where
+    K: Clone + Ord,
+{
+    fn get<Q>(&self, key: &Q) -> Option<&V>
+    where
+        Q: Borrow<[K]>,
+    {
+        let key = key.borrow();
         assert!(key.len() > 0);
 
         let mut node = self;
@@ -79,9 +89,9 @@ where
         }
     }
 
-    pub fn insert<Q>(&mut self, key: Q, value: V) -> Result<Option<V>, ()>
+    fn insert<Q>(&mut self, key: &Q, value: V) -> Result<Option<V>, ()>
     where
-        Q: Borrow<[K]>,
+        Q: Borrow<[K]> + ?Sized,
     {
         let key = key.borrow();
 
@@ -129,7 +139,11 @@ where
         }
     }
 
-    pub fn remove(&mut self, key: &[K], prune: bool) -> Option<TrieNode<K, V>> {
+    fn remove<Q>(&mut self, key: &Q, prune: bool) -> Option<Self>
+    where
+        Q: Borrow<[K]>,
+    {
+        let key = key.borrow();
         assert!(key.len() > 0);
 
         let mut nodes = &mut self.children;
@@ -163,4 +177,3 @@ where
         }
     }
 }
-

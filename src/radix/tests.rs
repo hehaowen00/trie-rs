@@ -1,18 +1,19 @@
 use crate::radix::RadixNode;
+use crate::TrieExt;
 
 #[test]
 fn radix1() {
     let mut radix = RadixNode::new();
 
-    radix.insert([1,2,3,4], 1).unwrap();
-    radix.insert([1,3,3,4], 2).unwrap();
-    radix.insert([1,2,3,4,5], 3).unwrap();
-    radix.insert([1,2,3,4,5,6,7,8], 4).unwrap();
-    radix.insert([1], 5).unwrap();
+    radix.insert(&[1,2,3,4], 1).unwrap();
+    radix.insert(&[1,3,3,4], 2).unwrap();
+    radix.insert(&[1,2,3,4,5], 3).unwrap();
+    radix.insert(&[1,2,3,4,5,6,7,8], 4).unwrap();
+    radix.insert(&[1], 5).unwrap();
 
-    radix.insert([2,3,4], 6).unwrap();
-    radix.insert([2,3,4,5,6,7], 7).unwrap();
-    radix.insert([2,3,4,5,6,7,8], 8).unwrap();
+    radix.insert(&[2,3,4], 6).unwrap();
+    radix.insert(&[2,3,4,5,6,7], 7).unwrap();
+    radix.insert(&[2,3,4,5,6,7,8], 8).unwrap();
 
     let k = [1,2,3,4];
     let v = radix.get(&k);
