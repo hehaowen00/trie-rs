@@ -12,7 +12,7 @@ pub struct RadixNode<K, V> {
     children: Vec<RadixNode<K, V>>,
 }
 
-impl<K, V> RadixNode<K, V> 
+impl<K, V> RadixNode<K, V>
 where
     K: Clone + Ord,
 {
@@ -26,7 +26,7 @@ where
 
     pub fn from<T>(key: T, value: V) -> Self
     where
-        T: AsRef<[K]>
+        T: AsRef<[K]>,
     {
         Self {
             key: key.as_ref().to_vec(),
@@ -37,7 +37,7 @@ where
 
     pub fn from_key<T>(key: T) -> Self
     where
-        T: AsRef<[K]>
+        T: AsRef<[K]>,
     {
         Self {
             key: key.as_ref().to_vec(),
@@ -53,7 +53,7 @@ where
     pub fn value(&self) -> Option<&V> {
         self.value.as_ref()
     }
-    
+
     pub fn children(&self) -> &Vec<RadixNode<K, V>> {
         &self.children
     }
@@ -148,7 +148,7 @@ where
                     0 => {
                         let val = std::mem::replace(&mut nodes[i].value, Some(value));
                         return Ok(val);
-                    },
+                    }
                     _ => {
                         nodes = &mut nodes[i].children;
                         i = 0;
@@ -165,7 +165,7 @@ where
                             new_root.value = old.value.take();
                             std::mem::swap(&mut new_root.children, &mut old.children);
                             drop(old);
-                        },
+                        }
                         false => {
                             old.key = old.key[lcs..].to_vec();
                             new_root.children.push(old);
@@ -178,7 +178,7 @@ where
                             nodes.push(new_root);
                             nodes.sort_by(|a, b| a.key.cmp(&b.key));
                             return Ok(None);
-                        },
+                        }
                         _ => {
                             let mut child = RadixNode::from_key(&k[lcs..]);
                             child.value = Some(value);
@@ -190,7 +190,7 @@ where
                             return Ok(None);
                         }
                     }
-                },
+                }
                 Ordering::Less => unreachable!(),
             }
         }
@@ -235,7 +235,7 @@ where
                     0 => {
                         let removed = nodes.remove(idx);
                         return Some(removed);
-                    },
+                    }
                     1 => {
                         // a node with one child is only possible if the node has a value
                         let node = &mut nodes[idx];
@@ -247,7 +247,7 @@ where
 
                         let removed = std::mem::replace(node, child);
                         return Some(removed);
-                    },
+                    }
                     _ => {
                         let node = &mut nodes[idx];
                         let key = node.key.clone();
