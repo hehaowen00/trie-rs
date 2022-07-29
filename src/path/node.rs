@@ -134,6 +134,7 @@ impl<T> PathTrie<T> {
     fn compress_node(&mut self) {
         if self.children.len() == 1 {
             let node = &self.children[0];
+
             if self.data.is_none() && self.path == "*"
                 || &self.path[0..1] == ":"
                 || &node.path[0..1] == ":"
@@ -149,6 +150,8 @@ impl<T> PathTrie<T> {
             self.path.push_str(&node.path);
             self.data = node.data;
             self.children = node.children;
+        } else {
+            self.compress();
         }
     }
 }
@@ -198,6 +201,17 @@ pub fn after<'a, 'b>(a: &'a str, b: &'b str) -> &'a str {
     &a[a.len()..]
 }
 
+pub fn lcs<'a, 'b>(a: &'a str, b: &'b str) -> usize {
+    let min = std::cmp::min(a.len(), b.len());
+    for i in 0..min {
+        if &a[i..i + 1] != &b[i..i + 1] {
+            return i;
+        }
+    }
+
+    min
+}
+
 #[derive(Debug)]
 pub enum PathParseError<'a> {
     InsufficientLength,
@@ -241,29 +255,31 @@ pub fn parse_key<'a>(key: &'a str) -> Result<Vec<String>, PathParseError<'a>> {
 
 #[test]
 fn test_node_get() {
-    let mut buildler = PathTrie::builder();
+    let mut builder = PathTrie::builder();
 
-    buildler.insert("/api/todos", 1);
-    buildler.insert("/api/todo/:id", 2);
+    builder.insert("/api/todos", 1);
+    builder.insert("/api/todo/:id", 2);
 
-    buildler.insert("/api/lists", 3);
-    buildler.insert("/api/list/:id", 4);
+    builder.insert("/api/lists", 3);
+    builder.insert("/api/list/:id", 4);
 
-    buildler.insert("/api/auth/register", 5);
-    buildler.insert("/api/auth/login", 6);
-    buildler.insert("/api/auth/logout", 7);
+    builder.insert("/api/auth/register", 5);
+    builder.insert("/api/auth/login", 6);
+    builder.insert("/api/auth/logout", 7);
 
-    buildler.insert("/a/b/c/d/e/*", 8);
-    buildler.insert("/api/hello/:name", 9);
-    buildler.insert("/api/hello/:name/:addr", 10);
-    buildler.insert("/api/hello/:name/:age", 11);
-    buildler.insert("/api/hello/:name/addr", 12);
-    buildler.insert("/api/goodbye/:name", 13);
+    builder.insert("/a/b/c/d/e/*", 8);
+    builder.insert("/a/d/c/d/e/*", -8);
+    builder.insert("/api/hello/:name", 9);
+    builder.insert("/api/hello/:name/:addr", 10);
+    builder.insert("/api/hello/:name/:age", 11);
+    builder.insert("/api/hello/:name/addr", 12);
+    builder.insert("/api/goodbye/:name", 13);
 
-    buildler.insert("*", 404);
-    buildler.insert("/:user/profile", 14);
+    builder.insert("*", 404);
+    builder.insert("/:user/profile", 14);
 
-    let trie = buildler.finalize();
+    let trie = builder.finalize();
+    println!("{:#?}", trie);
 
     assert_eq!(trie.children()[0].path(), ":user");
 
@@ -286,4 +302,13 @@ fn test_node_get() {
         Some((2, p)) if p.get("id") == Some("a2") => assert!(true),
         n => panic!("{:?}", n),
     };
+
+    match trie.get("/a/b/c/d/e/wildcard") {
+        Some((8, p)) if p.get("*") == Some("wildcard") => assert!(true),
+        n => panic!("{:?}", n),
+    }
+    match trie.get("/a/d/c/d/e/wildcard") {
+        Some((-8, p)) if p.get("*") == Some("wildcard") => assert!(true),
+        n => panic!("{:?}", n),
+    }
 }
