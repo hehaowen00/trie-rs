@@ -49,15 +49,8 @@ impl<T> PathTrie<T> {
 
     fn get_params<'a, 'b>(&'a self, params: &mut Params<'a, 'b>, key: &'b str) -> Option<&T> {
         if key.len() == 0 {
-            match &self.data {
-                Some(data) => return Some(&data),
-                None => return None,
-            }
+            return self.data.as_ref();
         }
-
-        // search for a static string that matches the key
-        // search for parameter node
-        // search for wildcard node
 
         if self.children.len() == 0 {
             return None;
@@ -66,15 +59,13 @@ impl<T> PathTrie<T> {
         let rem = if key.starts_with("/") { &key[1..] } else { key };
 
         for node in &self.children {
-            if &node.path[0..1] == ":" {
+            if &node.path[0..1] == ":" || &node.path[0..1] == "*" {
                 continue;
             }
 
-            if &node.path[0..1] == "*" {
-                continue;
-            }
+            let temp = substr(rem, "/");
 
-            if rem.starts_with(&node.path) {
+            if node.path.starts_with(temp) {
                 return node.get_params(params, &rem[node.path.len()..]);
             }
         }
@@ -96,7 +87,7 @@ impl<T> PathTrie<T> {
         None
     }
 
-    fn insert_xs(&mut self, keys: &[String], value: T) {
+    fn insert(&mut self, keys: &[String], value: T) {
         if keys.len() == 0 {
             self.data = Some(value);
             return;
@@ -104,14 +95,14 @@ impl<T> PathTrie<T> {
 
         for node in self.children.iter_mut() {
             if node.path == keys[0] {
-                node.insert_xs(&keys[1..], value);
+                node.insert(&keys[1..], value);
                 return;
             }
 
             match (&node.path[0..1], &keys[0][0..1]) {
                 (":", ":") | ("*", ":") => {
                     let mut new = PathTrie::new(keys[0].clone());
-                    new.insert_xs(&keys[1..], value);
+                    new.insert(&keys[1..], value);
                     let _ = std::mem::replace(node, new);
                 }
                 (":", "*") | ("*", "*") => {
@@ -127,7 +118,7 @@ impl<T> PathTrie<T> {
         }
 
         let mut new = PathTrie::new(keys[0].clone());
-        new.insert_xs(&keys[1..], value);
+        new.insert(&keys[1..], value);
         self.children.push(new);
         self.children.sort_by_key(|e| e.path.clone());
     }
@@ -143,7 +134,11 @@ impl<T> PathTrie<T> {
     fn compress_node(&mut self) {
         if self.children.len() == 1 {
             let node = &self.children[0];
-            if self.data.is_none() && &node.path[0..1] == ":" || &node.path[0..1] == "*" {
+            if self.data.is_none() && self.path == "*"
+                || &self.path[0..1] == ":"
+                || &node.path[0..1] == ":"
+                || &node.path[0..1] == "*"
+            {
                 return;
             }
 
@@ -175,7 +170,7 @@ impl<T> TrieBuilder<T> {
     {
         let key = key.as_ref();
         let xs = parse_key(key).unwrap();
-        self.root.insert_xs(&xs, value);
+        self.root.insert(&xs, value);
     }
 
     pub fn finalize(mut self) -> PathTrie<T> {
@@ -244,178 +239,51 @@ pub fn parse_key<'a>(key: &'a str) -> Result<Vec<String>, PathParseError<'a>> {
     Ok(xs)
 }
 
-// #[test]
-fn test_parse() {
-    let res = parse_key("/api/hello/:name/:age/*").unwrap();
-    assert_eq!(
-        res,
-        vec![
-            "api/hello/".to_string(),
-            ":name".to_string(),
-            ":age".to_string(),
-            "*".to_string()
-        ]
-    );
+#[test]
+fn test_node_get() {
+    let mut buildler = PathTrie::builder();
 
-    let res = parse_key("/api/hello/*").unwrap();
-    assert_eq!(res, vec!["api/hello/".to_string(), "*".to_string(),]);
+    buildler.insert("/api/todos", 1);
+    buildler.insert("/api/todo/:id", 2);
 
-    let res = parse_key("/api/hello/*/err").unwrap();
-    assert_eq!(
-        res,
-        vec![
-            "api/hello/".to_string(),
-            "*".to_string(),
-            "err/".to_string()
-        ]
-    );
+    buildler.insert("/api/lists", 3);
+    buildler.insert("/api/list/:id", 4);
 
-    let res = parse_key("/query/*").unwrap();
-    assert_eq!(res, vec!["query/".to_string(), "*".to_string()]);
+    buildler.insert("/api/auth/register", 5);
+    buildler.insert("/api/auth/login", 6);
+    buildler.insert("/api/auth/logout", 7);
+
+    buildler.insert("/a/b/c/d/e/*", 8);
+    buildler.insert("/api/hello/:name", 9);
+    buildler.insert("/api/hello/:name/:addr", 10);
+    buildler.insert("/api/hello/:name/:age", 11);
+    buildler.insert("/api/hello/:name/addr", 12);
+    buildler.insert("/api/goodbye/:name", 13);
+
+    buildler.insert("*", 404);
+    buildler.insert("/:user/profile", 14);
+
+    let trie = buildler.finalize();
+
+    assert_eq!(trie.children()[0].path(), ":user");
+
+    match trie.get("/name/profile") {
+        Some((14, p)) if p.get("user") == Some("name") => assert!(true),
+        n => panic!("{:?}", n),
+    };
+
+    match trie.get("/api/todos") {
+        Some((1, _)) => assert!(true),
+        n => panic!("{:?}", n),
+    };
+
+    match trie.get("/api/todo/5") {
+        Some((2, p)) if p.get("id") == Some("5") => assert!(true),
+        n => panic!("{:?}", n),
+    };
+
+    match trie.get("/api/todo/a2") {
+        Some((2, p)) if p.get("id") == Some("a2") => assert!(true),
+        n => panic!("{:?}", n),
+    };
 }
-
-// #[test]
-// fn test_node() {
-//     let mut node = Node::new(Vec::new());
-//
-//     let keys = parse_key("/api/hello/:name").unwrap();
-//     node.insert(&keys, 1);
-//
-//     let keys = parse_key("/api/goodbye/:name/:age").unwrap();
-//     node.insert(&keys, 2);
-//
-//     let keys = parse_key("/api/hello/:name/:age").unwrap();
-//     node.insert(&keys, 3);
-//
-//     let keys = parse_key("/api/hello/:name/:age").unwrap();
-//     node.insert(&keys, 6);
-//
-//     let keys = parse_key("/a/b/*").unwrap();
-//     node.insert(&keys, 4);
-//
-//     let keys = parse_key("/api/hello").unwrap();
-//     node.insert(&keys, 0);
-//
-//     let keys = parse_key("/:id/collections").unwrap();
-//     node.insert(&keys, 8);
-//
-//     // let keys = parse_key("/:name/collections").unwrap();
-//     // node.insert(&keys, 8);
-//
-//     let res = Node {
-//         path: vec![],
-//         data: None,
-//         children: vec![
-//             Node {
-//                 path: vec![":id".to_string(), "collections/".to_string()],
-//                 data: Some(8),
-//                 children: vec![],
-//             },
-//             Node {
-//                 path: vec!["a".to_string()],
-//                 data: None,
-//                 children: vec![
-//                     Node {
-//                         path: vec!["/b/".to_string(), "*".to_string()],
-//                         data: Some(4),
-//                         children: vec![],
-//                     },
-//                     Node {
-//                         path: vec!["pi/".to_string()],
-//                         data: None,
-//                         children: vec![
-//                             Node {
-//                                 path: vec![
-//                                     "goodbye/".to_string(),
-//                                     ":name".to_string(),
-//                                     ":age".to_string(),
-//                                 ],
-//                                 data: Some(2),
-//                                 children: vec![],
-//                             },
-//                             Node {
-//                                 path: vec!["hello/".to_string()],
-//                                 data: Some(0),
-//                                 children: vec![Node {
-//                                     path: vec![":name".to_string()],
-//                                     data: Some(1),
-//                                     children: vec![Node {
-//                                         path: vec![":age".to_string()],
-//                                         data: Some(6),
-//                                         children: vec![],
-//                                     }],
-//                                 }],
-//                             },
-//                         ],
-//                     },
-//                 ],
-//             },
-//         ],
-//     };
-//
-//     assert_eq!(node, res);
-// }
-
-// #[test]
-// fn test_node_get() {
-//     let trie = Node {
-//         path: vec![],
-//         data: None,
-//         children: vec![Node {
-//             path: vec!["/a".to_string()],
-//             data: None,
-//             children: vec![
-//                 Node {
-//                     path: vec!["/b/".to_string(), "*".to_string()],
-//                     data: Some(6),
-//                     children: vec![],
-//                 },
-//                 Node {
-//                     path: vec!["pi/".to_string()],
-//                     data: None,
-//                     children: vec![
-//                         Node {
-//                             path: vec![
-//                                 "goodbye/".to_string(),
-//                                 ":name".to_string(),
-//                                 ":age".to_string(),
-//                             ],
-//                             data: Some(2),
-//                             children: vec![],
-//                         },
-//                         Node {
-//                             path: vec!["hello".to_string()],
-//                             data: Some(0),
-//                             children: vec![Node {
-//                                 path: vec![":name".to_string()],
-//                                 data: Some(1),
-//                                 children: vec![Node {
-//                                     path: vec![":age".to_string()],
-//                                     data: Some(3),
-//                                     children: vec![],
-//                                 }],
-//                             }],
-//                         },
-//                     ],
-//                 },
-//             ],
-//         }],
-//     };
-//
-//     let (r, params) = trie.get("/api/hello/world").unwrap();
-//     assert_eq!(r, &1);
-//     assert_eq!(params.get("name"), Some("world"));
-//
-//     let (r, params) = trie.get("/api/goodbye/world/2").unwrap();
-//     assert_eq!(r, &2);
-//     assert_eq!(params.get("name"), Some("world"));
-//     assert_eq!(params.get("age"), Some("2"));
-//
-//     let (r, params) = trie.get("/api/hello/world/2").unwrap();
-//     assert_eq!(r, &3);
-//     assert_eq!(params.get("name"), Some("world"));
-//     assert_eq!(params.get("age"), Some("2"));
-//
-//     let (r, _params) = trie.get("/a/b/string").unwrap();
-//     assert_eq!(r, &4);
-// }
