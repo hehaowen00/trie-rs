@@ -1,22 +1,26 @@
 use super::params::Params;
 
 #[derive(Debug, Eq, PartialEq)]
-pub struct Node<T> {
+pub struct PathTrie<T> {
     path: String,
     data: Option<T>,
     children: Vec<Self>,
     compressed: bool,
 }
 
-impl<T> Node<T> {
+impl<T> PathTrie<T> {
     #[inline]
-    pub fn new(path: String) -> Self {
+    pub(crate) fn new(path: String) -> Self {
         Self {
             path,
             data: None,
             children: Vec::new(),
             compressed: false,
         }
+    }
+
+    pub fn builder() -> TrieBuilder<T> {
+        TrieBuilder::new()
     }
 
     pub fn children(&self) -> &[Self] {
@@ -33,57 +37,6 @@ impl<T> Node<T> {
 
     pub fn len(&self) -> usize {
         self.children.len()
-    }
-
-    pub fn insert<S>(&mut self, key: S, value: T) -> Result<(), String>
-    where
-        S: AsRef<str>,
-    {
-        if self.compressed {
-            return Err("cannot insert on compressed path trie".to_string());
-        }
-
-        let key = key.as_ref();
-        let xs = parse_key(key).unwrap();
-        self.insert_xs(&xs, value);
-
-        Ok(())
-    }
-
-    fn insert_xs(&mut self, keys: &[String], value: T) {
-        if keys.len() == 0 {
-            self.data = Some(value);
-            return;
-        }
-
-        for node in self.children.iter_mut() {
-            if node.path == keys[0] {
-                node.insert_xs(&keys[1..], value);
-                return;
-            }
-
-            match (&node.path[0..1], &keys[0][0..1]) {
-                (":", ":") | ("*", ":") => {
-                    let mut new = Node::new(keys[0].clone());
-                    new.insert_xs(&keys[1..], value);
-                    let _ = std::mem::replace(node, new);
-                }
-                (":", "*") | ("*", "*") => {
-                    let mut new = Node::new(keys[0].clone());
-                    new.data = Some(value);
-                    let _ = std::mem::replace(node, new);
-                }
-                _ => continue,
-            }
-
-            self.children.sort_by_key(|e| e.path.clone());
-            return;
-        }
-
-        let mut new = Node::new(keys[0].clone());
-        new.insert_xs(&keys[1..], value);
-        self.children.push(new);
-        self.children.sort_by_key(|e| e.path.clone());
     }
 
     pub fn get<'a, 'b>(&'a self, key: &'b str) -> Option<(&T, Params<'a, 'b>)> {
@@ -121,13 +74,6 @@ impl<T> Node<T> {
                 continue;
             }
 
-            // println!(
-            //     "cmp {:?} {:?} {:?}",
-            //     &node.path,
-            //     rem,
-            //     rem.starts_with(&node.path)
-            // );
-
             if rem.starts_with(&node.path) {
                 return node.get_params(params, &rem[node.path.len()..]);
             }
@@ -150,7 +96,43 @@ impl<T> Node<T> {
         None
     }
 
-    pub fn compress(&mut self) {
+    fn insert_xs(&mut self, keys: &[String], value: T) {
+        if keys.len() == 0 {
+            self.data = Some(value);
+            return;
+        }
+
+        for node in self.children.iter_mut() {
+            if node.path == keys[0] {
+                node.insert_xs(&keys[1..], value);
+                return;
+            }
+
+            match (&node.path[0..1], &keys[0][0..1]) {
+                (":", ":") | ("*", ":") => {
+                    let mut new = PathTrie::new(keys[0].clone());
+                    new.insert_xs(&keys[1..], value);
+                    let _ = std::mem::replace(node, new);
+                }
+                (":", "*") | ("*", "*") => {
+                    let mut new = PathTrie::new(keys[0].clone());
+                    new.data = Some(value);
+                    let _ = std::mem::replace(node, new);
+                }
+                _ => continue,
+            }
+
+            self.children.sort_by_key(|e| e.path.clone());
+            return;
+        }
+
+        let mut new = PathTrie::new(keys[0].clone());
+        new.insert_xs(&keys[1..], value);
+        self.children.push(new);
+        self.children.sort_by_key(|e| e.path.clone());
+    }
+
+    pub(crate) fn compress(&mut self) {
         self.compressed = true;
 
         for node in self.children.iter_mut() {
@@ -161,9 +143,7 @@ impl<T> Node<T> {
     fn compress_node(&mut self) {
         if self.children.len() == 1 {
             let node = &self.children[0];
-            if self.data.is_none() && (&self.path[0..1] == "*" || &self.path[0..1] == ":")
-                || (&node.path[0..1] == ":" || &node.path[0..1] == "*")
-            {
+            if self.data.is_none() && &node.path[0..1] == ":" || &node.path[0..1] == "*" {
                 return;
             }
 
@@ -175,6 +155,32 @@ impl<T> Node<T> {
             self.data = node.data;
             self.children = node.children;
         }
+    }
+}
+
+pub struct TrieBuilder<T> {
+    root: PathTrie<T>,
+}
+
+impl<T> TrieBuilder<T> {
+    pub fn new() -> Self {
+        Self {
+            root: PathTrie::new(String::new()),
+        }
+    }
+
+    pub fn insert<S>(&mut self, key: S, value: T)
+    where
+        S: AsRef<str>,
+    {
+        let key = key.as_ref();
+        let xs = parse_key(key).unwrap();
+        self.root.insert_xs(&xs, value);
+    }
+
+    pub fn finalize(mut self) -> PathTrie<T> {
+        self.root.compress();
+        self.root
     }
 }
 
