@@ -1,3 +1,5 @@
+#![allow(unused_must_use)]
+
 pub mod path;
 pub mod radix;
 pub mod trie;

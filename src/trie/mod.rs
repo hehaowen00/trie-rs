@@ -11,7 +11,7 @@ pub struct TrieNode<K, V> {
     children: Vec<TrieNode<K, V>>,
 }
 
-impl<K, V> TrieNode<K, V> 
+impl<K, V> TrieNode<K, V>
 where
     K: Clone + Ord + PartialOrd,
 {
@@ -28,7 +28,7 @@ where
 
     pub fn from<T>(key: T, value: V) -> Self
     where
-        T: Borrow<K>
+        T: Borrow<K>,
     {
         Self {
             key: key.borrow().clone(),
@@ -70,17 +70,16 @@ where
         let mut i = 0;
 
         loop {
-            let res = node.children
-                .binary_search_by(|e| e.key().cmp(&key[i]));
+            let res = node.children.binary_search_by(|e| e.key().cmp(&key[i]));
 
             match res {
                 Ok(idx) => {
                     node = &node.children[idx];
                     i += 1;
-                },
+                }
                 Err(_) => {
                     return None;
-                },
+                }
             }
 
             if i == key.len() {
@@ -100,8 +99,7 @@ where
             return Ok(value);
         }
 
-        let res = self.children
-            .binary_search_by(|e| e.key().cmp(&key[0]));
+        let res = self.children.binary_search_by(|e| e.key().cmp(&key[0]));
 
         match res {
             Ok(idx) => {
@@ -110,13 +108,13 @@ where
                     1 => {
                         let value = ::std::mem::replace(&mut node.value, Some(value));
                         return Ok(value);
-                    },
+                    }
                     _ => {
                         node.insert(&key[1..], value)?;
                         return Ok(None);
                     }
                 }
-            },
+            }
             Err(idx) => {
                 let mut xs = vec![];
 
@@ -161,7 +159,7 @@ where
                     true => {
                         let removed = nodes.remove(i);
                         return Some(removed);
-                    },
+                    }
                     false => {
                         let mut node = TrieNode::new(&nodes[i].key);
                         node.value = nodes[i].value.take();
