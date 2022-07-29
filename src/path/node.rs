@@ -132,26 +132,27 @@ impl<T> PathTrie<T> {
     }
 
     fn compress_node(&mut self) {
-        if self.children.len() == 1 {
-            let node = &self.children[0];
+        match self.len() {
+            1 => {
+                let node = &self.children[0];
 
-            if self.data.is_none() && self.path == "*"
-                || &self.path[0..1] == ":"
-                || &node.path[0..1] == ":"
-                || &node.path[0..1] == "*"
-            {
-                return;
+                if self.data.is_none() && self.path == "*"
+                    || &self.path[0..1] == ":"
+                    || &node.path[0..1] == ":"
+                    || &node.path[0..1] == "*"
+                {
+                    return;
+                }
+
+                let mut node = self.children.remove(0);
+                node.compress_node();
+
+                self.path.push_str("/");
+                self.path.push_str(&node.path);
+                self.data = node.data;
+                self.children = node.children;
             }
-
-            let mut node = self.children.remove(0);
-            node.compress_node();
-
-            self.path.push_str("/");
-            self.path.push_str(&node.path);
-            self.data = node.data;
-            self.children = node.children;
-        } else {
-            self.compress();
+            _ => self.compress(),
         }
     }
 }
@@ -269,6 +270,9 @@ fn test_node_get() {
 
     builder.insert("/a/b/c/d/e/*", 8);
     builder.insert("/a/d/c/d/e/*", -8);
+    builder.insert("/a/de/c/d/e/*", -9);
+    builder.insert("/a/de/d/d/e/*", -9);
+    builder.insert("/a/def/d/d/e/*", -10);
     builder.insert("/api/hello/:name", 9);
     builder.insert("/api/hello/:name/:addr", 10);
     builder.insert("/api/hello/:name/:age", 11);
@@ -307,8 +311,19 @@ fn test_node_get() {
         Some((8, p)) if p.get("*") == Some("wildcard") => assert!(true),
         n => panic!("{:?}", n),
     }
-    match trie.get("/a/d/c/d/e/wildcard") {
-        Some((-8, p)) if p.get("*") == Some("wildcard") => assert!(true),
+    match trie.get("/a/def/d/d/e/wildcard") {
+        Some((-10, p)) if p.get("*") == Some("wildcard") => assert!(true),
+        n => panic!("{:?}", n),
+    }
+
+    match trie.get("/api/hello/world/1") {
+        Some((11, p)) => {
+            let name = p.get("name");
+            assert_eq!(name, Some("world"));
+
+            let age = p.get("age");
+            assert_eq!(age, Some("1"));
+        }
         n => panic!("{:?}", n),
     }
 }
