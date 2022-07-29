@@ -48,15 +48,15 @@ impl<T> PathTrie<T> {
     }
 
     fn get_params<'a, 'b>(&'a self, params: &mut Params<'a, 'b>, key: &'b str) -> Option<&T> {
-        if key.len() == 0 {
+        let rem = if key.starts_with("/") { &key[1..] } else { key };
+
+        if rem.len() == 0 {
             return self.data.as_ref();
         }
 
         if self.children.len() == 0 {
             return None;
         }
-
-        let rem = if key.starts_with("/") { &key[1..] } else { key };
 
         for node in &self.children {
             if &node.path[0..1] == ":" || &node.path[0..1] == "*" {
