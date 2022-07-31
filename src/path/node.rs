@@ -1,6 +1,6 @@
 use super::params::Params;
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct PathTrie<T> {
     path: String,
     data: Option<T>,
