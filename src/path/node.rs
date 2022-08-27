@@ -283,9 +283,15 @@ fn test_node_get() {
     builder.insert("/:user/profile", 14);
 
     let trie = builder.finalize();
-    println!("{:#?}", trie);
+    // println!("{:#?}", trie);
 
     assert_eq!(trie.children()[0].path(), ":user");
+
+    use std::time::Instant;
+    let now = Instant::now();
+    trie.get("/api/hello/world/random");
+    let elapsed = now.elapsed();
+    println!("node {}us", elapsed.as_micros());
 
     match trie.get("/name/profile") {
         Some((14, p)) if p.get("user") == Some("name") => assert!(true),

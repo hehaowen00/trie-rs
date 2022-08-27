@@ -11,6 +11,21 @@ impl<'a, 'b> Params<'a, 'b> {
         Self::Small([Default::default(); 4], 0)
     }
 
+    pub fn pop(&mut self) {
+        match self {
+            Self::Small(xs, n) => match *n {
+                0 => {}
+                _ => {
+                    xs[*n] = Default::default();
+                    *n = *n - 1;
+                }
+            },
+            Self::Large(params) => {
+                params.pop();
+            }
+        }
+    }
+
     pub fn insert(&mut self, key: &'a str, value: &'b str) {
         match self {
             Self::Small(params, count) => {
