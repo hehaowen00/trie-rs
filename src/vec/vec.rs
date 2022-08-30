@@ -1,26 +1,19 @@
-use crate::path::{
-    node::{after, substr},
-    Params,
-};
+use crate::path::{node::after, Params};
 use slab::Slab;
 
 #[derive(Debug)]
 pub struct VecPathTrie<T> {
-    nodes: Slab<Node>,
-    data: Slab<T>,
+    nodes: Slab<Node<T>>,
 }
 
 impl<T> VecPathTrie<T> {
     pub fn new() -> Self {
         let mut slab = Slab::new();
 
-        let root = Node::from(String::new(), None, Vec::new());
+        let root = Node::from(String::new(), Vec::new());
         slab.insert(root);
 
-        Self {
-            nodes: slab,
-            data: Slab::new(),
-        }
+        Self { nodes: slab }
     }
 
     pub fn get<'a, 'b>(&'a self, key: &'b str) -> Option<(&T, Params<'a, 'b>)> {
@@ -39,8 +32,7 @@ impl<T> VecPathTrie<T> {
             key = if key.starts_with("/") { &key[1..] } else { key };
 
             if key.len() == 0 {
-                let idx = self.nodes[curr].data?;
-                return Some(&self.data[idx]);
+                return self.nodes[curr].data.as_ref();
             }
 
             let cs = &self.nodes[curr].children;
@@ -50,9 +42,8 @@ impl<T> VecPathTrie<T> {
             }
 
             let lut = &self.nodes[curr].index;
-
             let xs = &self.nodes[curr].children;
-            let temp = substr(key, "/");
+            let temp = find(key);
 
             match lut.find(&key[0..1]) {
                 Some(start) => {
@@ -94,12 +85,9 @@ impl<T> VecPathTrie<T> {
                 Some(idx) => {
                     let idx = xs[idx];
                     let node = &self.nodes[idx];
-                    params.insert(&self.nodes[idx].path[1..], temp);
+                    params.insert(&node.path[1..], temp);
                     match after(key, "/") {
-                        "" => match node.data {
-                            Some(idx) => return Some(&self.data[idx]),
-                            None => return None,
-                        },
+                        "" => return node.data.as_ref(),
                         s => {
                             curr = idx;
                             key = s;
@@ -114,12 +102,9 @@ impl<T> VecPathTrie<T> {
                 Some(idx) => {
                     let idx = xs[idx];
                     let node = &self.nodes[idx];
-                    params.insert(&self.nodes[idx].path, temp);
+                    params.insert(&node.path, temp);
                     match after(key, "/") {
-                        "" => match node.data {
-                            Some(idx) => return Some(&self.data[idx]),
-                            None => return None,
-                        },
+                        "" => return node.data.as_ref(),
                         s => {
                             curr = idx;
                             key = s;
@@ -142,23 +127,15 @@ impl<T> VecPathTrie<T> {
 
         'outer: loop {
             if active.len() == 0 {
-                match self.nodes[curr].data {
-                    Some(idx) => {
-                        self.data[idx] = value;
-                    }
-                    None => {
-                        let idx = self.data.insert(value);
-                        self.nodes[curr].data = Some(idx);
-                    }
-                }
+                self.nodes[curr].data = Some(value);
                 break 'outer;
             }
 
             if self.nodes[curr].children.len() == 0 {
                 let (start, rem) = longest(active);
-                let node = Node::new(start, None, Vec::new());
+                let node = Node::new(start, Vec::new());
 
-                let pos = self.add_node(node);
+                let pos = self.nodes.insert(node);
                 self.nodes[curr].children.push(pos);
 
                 curr = pos;
@@ -181,13 +158,10 @@ impl<T> VecPathTrie<T> {
                     }
 
                     let sp = self.nodes[idx].path.after(num).to_string();
-                    let rn = Node::from(
-                        sp,
-                        self.nodes[idx].data.take(),
-                        self.nodes[idx].children.clone(),
-                    );
+                    let mut right = Node::from(sp, self.nodes[idx].children.clone());
+                    right.data = self.nodes[idx].data.take();
 
-                    let pos = self.add_node(rn);
+                    let pos = self.nodes.insert(right);
 
                     self.nodes[idx].path = self.nodes[idx].path.from(num).to_string();
                     self.nodes[idx].children.clear();
@@ -195,9 +169,9 @@ impl<T> VecPathTrie<T> {
 
                     active = &active[num..];
                     let (joined, rem) = longest(active);
-                    let node = Node::new(joined, None, Vec::new());
+                    let node = Node::new(joined, Vec::new());
 
-                    let pos = self.add_node(node);
+                    let pos = self.nodes.insert(node);
                     self.nodes[idx].children.push(pos);
 
                     curr = pos;
@@ -207,16 +181,7 @@ impl<T> VecPathTrie<T> {
                 }
 
                 if equal {
-                    match self.nodes[idx].data {
-                        Some(n) => {
-                            self.data[n] = value;
-                        }
-                        None => {
-                            let pos = self.add_data(value);
-                            self.nodes[idx].data = Some(pos);
-                        }
-                    }
-
+                    self.nodes[idx].data = Some(value);
                     break 'outer;
                 }
 
@@ -228,26 +193,21 @@ impl<T> VecPathTrie<T> {
                             active = &active[1..];
                             continue 'outer;
                         }
-                        let node = Node::new(&active[0..1], None, self.nodes[idx].children.clone());
+                        let node = Node::new(&active[0..1], self.nodes[idx].children.clone());
                         curr = idx;
                         active = &active[1..];
 
                         let prev = std::mem::replace(&mut self.nodes[idx], node);
-                        if let Some(v) = prev.data {
-                            self.data.remove(v);
-                        }
                         for sub in &prev.children {
                             self.delete(*sub);
                         }
                     }
                     (":", "*") | ("*", "*") => {
-                        let node = Node::new(&active[0..1], None, self.nodes[idx].children.clone());
+                        let node = Node::new(&active[0..1], self.nodes[idx].children.clone());
                         curr = idx;
                         active = &active[1..];
+
                         let prev = std::mem::replace(&mut self.nodes[idx], node);
-                        if let Some(v) = prev.data {
-                            self.data.remove(v);
-                        }
                         for sub in &prev.children {
                             self.delete(*sub);
                         }
@@ -259,9 +219,9 @@ impl<T> VecPathTrie<T> {
             }
 
             let (start, rem) = longest(active);
-            let node = Node::new(start, None, Vec::new());
+            let node = Node::new(start, Vec::new());
 
-            let pos = self.add_node(node);
+            let pos = self.nodes.insert(node);
             self.nodes[curr].children.push(pos);
 
             curr = pos;
@@ -275,7 +235,6 @@ impl<T> VecPathTrie<T> {
 
         if key.len() == 0 {
             if self.nodes[curr].children.len() > 0 {
-                self.nodes[curr].data = None;
                 return 0;
             }
             return 1;
@@ -286,7 +245,7 @@ impl<T> VecPathTrie<T> {
         let mut p = 0;
 
         for (i, idx) in self.nodes[curr].children.iter().enumerate() {
-            let temp = substr(key, "/");
+            let temp = find(key);
             if self.nodes[*idx].path == temp {
                 index = *idx;
                 p = i;
@@ -322,18 +281,15 @@ impl<T> VecPathTrie<T> {
         for sub in self.nodes[idx].children.clone() {
             self.delete(sub);
         }
-        if let Some(v) = self.nodes[idx].data {
-            self.data.remove(v);
-        }
         self.nodes.remove(idx);
     }
 
-    fn add_node(&mut self, node: Node) -> usize {
-        self.nodes.insert(node)
-    }
-
-    fn add_data(&mut self, data: T) -> usize {
-        self.data.insert(data)
+    fn count_children(&self, idx: usize) -> usize {
+        let mut count = self.nodes[idx].children.len();
+        for child in &self.nodes[idx].children {
+            count += self.count_children(*child);
+        }
+        count
     }
 
     fn sort_all(&mut self) {
@@ -361,8 +317,8 @@ impl<T> VecPathTrie<T> {
             return;
         }
 
-        let mut temp = self.nodes[idx].children.clone();
-        temp.sort_by(|a, b| {
+        let mut children = self.nodes[idx].children.clone();
+        children.sort_by(|a, b| {
             let p_a = &self.nodes[*a].path;
             let p_b = &self.nodes[*b].path;
             if &p_a[0..1] == ":" || &p_a[0..1] == "*" && &p_b[0..1] != ":" || &p_b[0..1] != "*" {
@@ -371,43 +327,45 @@ impl<T> VecPathTrie<T> {
             if &p_b[0..1] == ":" || &p_b[0..1] == "*" && &p_a[0..1] != ":" || &p_a[0..1] != "*" {
                 return std::cmp::Ordering::Less;
             }
+            if &p_a[0..1] == &p_b[0..1] {
+                return self.count_children(*a).cmp(&self.count_children(*b));
+            }
             p_a.cmp(p_b)
         });
 
-        let xs = temp
+        let index = children
             .iter()
             .map(|i| self.nodes[*i].path[0..1].to_string())
             .collect::<Vec<_>>()
             .join("");
 
-        // println!("xs {}", xs);
-        self.nodes[idx].index = xs;
-        self.nodes[idx].children = temp;
+        self.nodes[idx].index = index;
+        self.nodes[idx].children = children;
     }
 }
 
 #[derive(Debug)]
-struct Node {
+struct Node<T> {
     path: String,
     index: String,
-    data: Option<usize>,
+    data: Option<T>,
     children: Vec<usize>,
 }
 
-impl Node {
-    pub fn new(path: &[&str], data: Option<usize>, children: Vec<usize>) -> Self {
+impl<T> Node<T> {
+    pub fn new(path: &[&str], children: Vec<usize>) -> Self {
         Self {
             path: path.join("/"),
-            data,
+            data: None,
             index: String::new(),
             children,
         }
     }
 
-    pub fn from(path: String, data: Option<usize>, children: Vec<usize>) -> Self {
+    pub fn from(path: String, children: Vec<usize>) -> Self {
         Self {
             path,
-            data,
+            data: None,
             index: String::new(),
             children,
         }
@@ -463,6 +421,16 @@ fn eq(s: &String, xs: &[&str]) -> bool {
         }
     }
     true
+}
+
+fn find<'a>(a: &'a str) -> &'a str {
+    for i in 0..a.len() {
+        if &a[i..i + 1] == "/" {
+            return &a[0..i];
+        }
+    }
+
+    a
 }
 
 trait Segmented {

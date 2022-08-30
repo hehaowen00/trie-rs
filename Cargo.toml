@@ -8,6 +8,9 @@ edition = "2021"
 [debug]
 opt-level = 3
 
+[release]
+debug = true
+
 [dependencies]
 slab = "0.4.7"
 

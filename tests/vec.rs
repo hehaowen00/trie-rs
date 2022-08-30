@@ -1,15 +1,20 @@
 use trie_rs::vec::VecPathTrie;
 
-fn main() {
+#[test]
+fn test() {
     let mut trie = VecPathTrie::new();
 
-    for s in &ROUTES {
-        trie.insert(s, true);
+    for (i, s) in ROUTES.iter().enumerate() {
+        trie.insert(s, i);
     }
 
     for (idx, url) in URLS.iter().enumerate() {
         match trie.get(url) {
-            Some(_) => {}
+            Some((v, _)) => {
+                if idx != *v {
+                    panic!("idx {idx}");
+                }
+            }
             None => panic!("url: {idx} {url}"),
         }
     }
