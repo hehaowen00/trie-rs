@@ -1,9 +1,9 @@
 #![allow(unused_must_use)]
 
+pub mod params;
 pub mod path;
 pub mod radix;
 pub mod trie;
-pub mod vec;
 
 use std::borrow::Borrow;
 

@@ -1,8 +1,8 @@
-use trie_rs::vec::VecPathTrie;
+use trie_rs::path::PathTrie;
 
 #[test]
-fn test() {
-    let mut trie = VecPathTrie::new();
+fn path_trie_test() {
+    let mut trie = PathTrie::new();
 
     for (i, s) in ROUTES.iter().enumerate() {
         trie.insert(s, i);

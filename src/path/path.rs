@@ -1,16 +1,17 @@
-use crate::path::{node::after, Params};
+use crate::params::Params;
 use slab::Slab;
+use std::time::Instant;
 
 #[derive(Debug)]
-pub struct VecPathTrie<T> {
+pub struct PathTrie<T> {
     nodes: Slab<Node<T>>,
 }
 
-impl<T> VecPathTrie<T> {
+impl<T> PathTrie<T> {
     pub fn new() -> Self {
-        let mut slab = Slab::new();
-
         let root = Node::from(String::new(), Vec::new());
+
+        let mut slab = Slab::new();
         slab.insert(root);
 
         Self { nodes: slab }
@@ -86,14 +87,10 @@ impl<T> VecPathTrie<T> {
                     let idx = xs[idx];
                     let node = &self.nodes[idx];
                     params.insert(&node.path[1..], temp);
-                    match after(key, "/") {
-                        "" => return node.data.as_ref(),
-                        s => {
-                            curr = idx;
-                            key = s;
-                            continue 'outer;
-                        }
-                    }
+
+                    curr = idx;
+                    key = after(key);
+                    continue 'outer;
                 }
                 None => {}
             }
@@ -103,14 +100,10 @@ impl<T> VecPathTrie<T> {
                     let idx = xs[idx];
                     let node = &self.nodes[idx];
                     params.insert(&node.path, temp);
-                    match after(key, "/") {
-                        "" => return node.data.as_ref(),
-                        s => {
-                            curr = idx;
-                            key = s;
-                            continue 'outer;
-                        }
-                    }
+
+                    curr = idx;
+                    key = after(key);
+                    continue 'outer;
                 }
                 None => return None,
             }
@@ -157,14 +150,15 @@ impl<T> VecPathTrie<T> {
                         continue 'outer;
                     }
 
-                    let sp = self.nodes[idx].path.after(num).to_string();
-                    let mut right = Node::from(sp, self.nodes[idx].children.clone());
+                    let subpath = self.nodes[idx].path.after(num).to_string();
+                    let children = std::mem::replace(&mut self.nodes[idx].children, Vec::new());
+
+                    let mut right = Node::from(subpath, children);
                     right.data = self.nodes[idx].data.take();
 
                     let pos = self.nodes.insert(right);
 
                     self.nodes[idx].path = self.nodes[idx].path.from(num).to_string();
-                    self.nodes[idx].children.clear();
                     self.nodes[idx].children.push(pos);
 
                     active = &active[num..];
@@ -318,6 +312,7 @@ impl<T> VecPathTrie<T> {
         }
 
         let mut children = self.nodes[idx].children.clone();
+
         children.sort_by(|a, b| {
             let p_a = &self.nodes[*a].path;
             let p_b = &self.nodes[*b].path;
@@ -425,12 +420,21 @@ fn eq(s: &String, xs: &[&str]) -> bool {
 
 fn find<'a>(a: &'a str) -> &'a str {
     for i in 0..a.len() {
-        if &a[i..i + 1] == "/" {
+        if a[i..].starts_with("/") {
             return &a[0..i];
         }
     }
 
     a
+}
+
+fn after<'a>(a: &'a str) -> &'a str {
+    for i in 0..a.len() {
+        if a[i..].starts_with("/") {
+            return &a[i + 1..];
+        }
+    }
+    &a[a.len()..]
 }
 
 trait Segmented {

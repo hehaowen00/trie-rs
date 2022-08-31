@@ -1,23 +1,23 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use trie_rs::vec::VecPathTrie;
+use trie_rs::path::PathTrie;
 
-fn vec_bench(c: &mut Criterion) {
-    let mut trie = VecPathTrie::new();
+fn path_trie_bench(c: &mut Criterion) {
+    let mut trie = PathTrie::new();
 
     for s in &ROUTES {
         trie.insert(s, true);
     }
 
-    c.bench_function("vec-path-trie-get", |b| {
+    c.bench_function("path-trie-get", |b| {
         b.iter(|| {
             for url in URLS {
-                trie.get(url);
+                let _ = trie.get(url);
             }
         })
     });
 }
 
-criterion_group!(benches, vec_bench);
+criterion_group!(benches, path_trie_bench);
 criterion_main!(benches);
 
 pub const ROUTES: [&str; 315] = [
