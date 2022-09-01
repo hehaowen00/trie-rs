@@ -1,2 +1,2 @@
 mod path;
-pub use path::PathTrie;
+pub use path::{parse_xs, PathTrie};
