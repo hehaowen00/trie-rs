@@ -41,7 +41,7 @@ fn path_trie_bench(c: &mut Criterion) {
     c.bench_function("matchit-at", |b| {
         b.iter(|| {
             for url in URLS {
-                let _ = trie.get(black_box(url));
+                let _ = matchit.at(black_box(url));
             }
         })
     });
