@@ -25,17 +25,21 @@ impl<T> PathTrie<T> {
     }
 
     fn get_params<'a, 'b>(&'a self, params: &mut Params<'a, 'b>, key: &'b str) -> Option<&T> {
-        let mut key = key;
+        let mut key = key.as_bytes();
         let mut curr = 0;
 
         'outer: loop {
-            key = if key.starts_with('/') { &key[1..] } else { key };
+            key = if key.starts_with(b"/") {
+                key.split_at(1).1
+            } else {
+                key
+            };
 
             if key.len() == 0 {
                 return self.nodes[curr].data.as_ref();
             }
 
-            let lut: &str = self.nodes[curr].index.as_ref();
+            let lut: &[u8] = self.nodes[curr].index.as_ref();
 
             if lut.len() == 0 {
                 return None;
@@ -43,18 +47,18 @@ impl<T> PathTrie<T> {
 
             let xs: &[usize] = self.nodes[curr].children.as_ref();
 
-            let n = match key.find('/') {
+            let n = match find(key, b'/') {
                 Some(n) => n,
                 None => key.len(),
             };
 
-            match lut.find(key.chars().next().unwrap()) {
+            match find(lut, key[0]) {
                 Some(start) => {
                     for idx in start..lut.len() {
                         let idx = xs[idx];
                         let el = &self.nodes[idx].path;
 
-                        if el.chars().next().unwrap() != key.chars().next().unwrap() {
+                        if el[0] != key[0] {
                             break;
                         }
 
@@ -63,8 +67,9 @@ impl<T> PathTrie<T> {
                         }
 
                         if key.starts_with(el) {
+                            let (_, rem) = key.split_at(el.len());
                             curr = idx;
-                            key = &key[el.len()..];
+                            key = rem;
                             continue 'outer;
                         }
                     }
@@ -72,24 +77,30 @@ impl<T> PathTrie<T> {
                 None => {}
             }
 
-            match lut.find(':') {
+            match find(lut, b':') {
                 Some(idx) => {
                     let idx = xs[idx];
                     let node = &self.nodes[idx];
-                    params.insert(&node.path[1..], &key[0..n]);
+                    let (_, k) = node.path.split_at(1);
+                    let (v, rem) = key.split_at(n);
+                    let k = to_str(k);
+                    let v = to_str(v);
+                    params.insert(k, v);
 
                     curr = idx;
-                    key = &key[n..];
+                    key = rem;
                     continue 'outer;
                 }
                 None => {}
             }
 
-            match lut.find('*') {
+            match find(lut, b'*') {
                 Some(idx) => {
                     let idx = xs[idx];
                     let node = &self.nodes[idx];
-                    params.insert(&node.path, key);
+                    let k = to_str(&node.path);
+                    let v = to_str(key);
+                    params.insert(k, v);
                     return node.data.as_ref();
                 }
                 None => return None,
@@ -127,17 +138,19 @@ impl<T> PathTrie<T> {
             let xs = self.nodes[curr].children.clone();
 
             for idx in xs {
-                let num = lcs(&self.nodes[idx].path, active);
-                let equal = eq(&self.nodes[idx].path, active);
+                let n_p =
+                    unsafe { std::str::from_utf8_unchecked(&self.nodes[idx].path) }.to_owned();
+                let num = lcs(&n_p, active);
+                let equal = eq(&n_p, active);
 
                 if num > 0 && !equal {
-                    if self.nodes[idx].path.length() == num {
+                    if n_p.length() == num {
                         curr = idx;
                         active = &active[num..];
                         continue 'outer;
                     }
 
-                    let subpath = self.nodes[idx].path.after(num).to_string();
+                    let subpath = n_p.after(num).to_string();
                     let children = std::mem::replace(&mut self.nodes[idx].children, Vec::new());
 
                     let mut right = Node::from(subpath, children);
@@ -145,7 +158,7 @@ impl<T> PathTrie<T> {
 
                     let pos = self.nodes.insert(right);
 
-                    self.nodes[idx].path = self.nodes[idx].path.from(num).to_string();
+                    self.nodes[idx].path = n_p.from(num).to_string().into_bytes();
                     self.nodes[idx].children.push(pos);
 
                     active = &active[num..];
@@ -166,10 +179,12 @@ impl<T> PathTrie<T> {
                     break 'outer;
                 }
 
-                let p = &self.nodes[idx].path.at(0)[0..1];
+                let p = &unsafe { std::str::from_utf8_unchecked(&self.nodes[idx].path) };
+                let p = p.to_string();
+                let p = &p.at(0)[0..1];
                 match (p, &active[0][0..1]) {
                     (":", ":") | ("*", ":") => {
-                        if &self.nodes[idx].path == &active[0] {
+                        if &self.nodes[idx].path == &active[0].as_bytes() {
                             curr = idx;
                             active = &active[1..];
                             continue 'outer;
@@ -244,9 +259,8 @@ impl<T> PathTrie<T> {
         if self.nodes[idx].children.len() == 1 {
             let xs = [self.nodes[idx].children[0]]
                 .iter()
-                .map(|i| self.nodes[*i].path[0..1].to_string())
-                .collect::<Vec<_>>()
-                .join("");
+                .map(|i| self.nodes[*i].path[0])
+                .collect::<Vec<_>>();
             self.nodes[idx].index = xs;
             return;
         }
@@ -256,13 +270,13 @@ impl<T> PathTrie<T> {
         children.sort_by(|a, b| {
             let p_a = &self.nodes[*a].path;
             let p_b = &self.nodes[*b].path;
-            if &p_a[0..1] == ":" || &p_a[0..1] == "*" && &p_b[0..1] != ":" || &p_b[0..1] != "*" {
+            if p_a[0] == b':' || p_a[0] == b'*' && p_b[0] != b':' || p_b[0] != b'*' {
                 return std::cmp::Ordering::Greater;
             }
-            if &p_b[0..1] == ":" || &p_b[0..1] == "*" && &p_a[0..1] != ":" || &p_a[0..1] != "*" {
+            if p_b[0] == b':' || p_b[0] == b'*' && p_a[0] != b':' || p_a[0] != b'*' {
                 return std::cmp::Ordering::Less;
             }
-            if &p_a[0..1] == &p_b[0..1] {
+            if p_a[0] == p_b[0] {
                 return self.count_children(*a).cmp(&self.count_children(*b));
             }
             p_a.cmp(p_b)
@@ -270,9 +284,8 @@ impl<T> PathTrie<T> {
 
         let index = children
             .iter()
-            .map(|i| self.nodes[*i].path[0..1].to_string())
-            .collect::<Vec<_>>()
-            .join("");
+            .map(|i| self.nodes[*i].path[0])
+            .collect::<Vec<_>>();
 
         self.nodes[idx].index = index;
         self.nodes[idx].children = children;
@@ -281,8 +294,8 @@ impl<T> PathTrie<T> {
 
 #[derive(Debug)]
 struct Node<T> {
-    path: String,
-    index: String,
+    path: Vec<u8>,
+    index: Vec<u8>,
     data: Option<T>,
     children: Vec<usize>,
 }
@@ -290,31 +303,21 @@ struct Node<T> {
 impl<T> Node<T> {
     pub fn new(path: &[&str], children: Vec<usize>) -> Self {
         Self {
-            path: path.join("/"),
+            path: path.join("/").into_bytes(),
             data: None,
-            index: String::new(),
+            index: Vec::new(),
             children,
         }
     }
 
     pub fn from(path: String, children: Vec<usize>) -> Self {
         Self {
-            path,
+            path: path.into_bytes(),
             data: None,
-            index: String::new(),
+            index: Vec::new(),
             children,
         }
     }
-}
-
-fn match_left(a: &str, b: &str) -> usize {
-    let min = std::cmp::min(a.len(), b.len());
-    for i in 0..min {
-        if &a[i..i + 1] != &b[i..i + 1] {
-            return i;
-        }
-    }
-    min
 }
 
 fn longest<'a>(key: &'a [&str]) -> (&'a [&'a str], usize) {
@@ -358,23 +361,14 @@ fn eq(s: &String, xs: &[&str]) -> bool {
     true
 }
 
-fn find<'a>(a: &'a str) -> &'a str {
-    for i in 0..a.len() {
-        if a[i..].starts_with("/") {
-            return &a[0..i];
-        }
-    }
-
-    a
+#[inline]
+fn find(a: &[u8], b: u8) -> Option<usize> {
+    a.iter().position(|&a| a == b)
 }
 
-fn after<'a>(a: &'a str) -> &'a str {
-    for i in 0..a.len() {
-        if a[i..].starts_with("/") {
-            return &a[i + 1..];
-        }
-    }
-    &a[a.len()..]
+#[inline]
+fn to_str<'a>(bytes: &'a [u8]) -> &'a str {
+    unsafe { std::str::from_utf8_unchecked(bytes) }
 }
 
 trait Segmented {

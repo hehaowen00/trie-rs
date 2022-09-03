@@ -1,25 +1,47 @@
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use matchit::Router;
 use trie_rs::path::PathTrie;
 
 fn path_trie_bench(c: &mut Criterion) {
     let mut trie = PathTrie::new();
+    let mut matchit = Router::new();
 
     for s in &ROUTES {
         trie.insert(s, true);
     }
 
-    c.bench_function("path-trie-get", |b| {
-        b.iter(|| {
-            for url in URLS {
-                let _ = trie.get(url);
-            }
-        })
-    });
+    for s in ROUTES {
+        matchit.insert(s, true).unwrap();
+    }
 
     c.bench_function("path-trie-get-4", |b| {
         b.iter(|| {
             for url in URLS_SUBSET {
-                let _ = trie.get(url);
+                let _ = trie.get(black_box(url));
+            }
+        })
+    });
+
+    c.bench_function("path-trie-get", |b| {
+        b.iter(|| {
+            for url in URLS {
+                let _ = trie.get(black_box(url));
+            }
+        })
+    });
+
+    c.bench_function("matchit-at-4", |b| {
+        b.iter(|| {
+            for url in URLS_SUBSET {
+                let _ = matchit.at(black_box(url));
+            }
+        })
+    });
+
+    c.bench_function("matchit-at", |b| {
+        b.iter(|| {
+            for url in URLS {
+                let _ = trie.get(black_box(url));
             }
         })
     });
