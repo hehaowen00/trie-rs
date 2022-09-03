@@ -35,17 +35,19 @@ impl<T> PathTrie<T> {
                 key
             };
 
+            let node = &self.nodes[curr];
+
             if key.len() == 0 {
-                return self.nodes[curr].data.as_ref();
+                return node.data.as_ref();
             }
 
-            let lut: &[u8] = self.nodes[curr].index.as_ref();
+            let lut: &[u8] = node.index.as_ref();
 
             if lut.len() == 0 {
                 return None;
             }
 
-            let xs: &[usize] = self.nodes[curr].children.as_ref();
+            let xs: &[usize] = node.children.as_ref();
 
             let n = match find(key, b'/') {
                 Some(n) => n,
@@ -56,7 +58,7 @@ impl<T> PathTrie<T> {
                 Some(start) => {
                     for idx in start..lut.len() {
                         let idx = xs[idx];
-                        let el = &self.nodes[idx].path;
+                        let el: &[u8] = self.nodes[idx].path.as_ref();
 
                         if el[0] != key[0] {
                             break;
@@ -81,6 +83,7 @@ impl<T> PathTrie<T> {
                 Some(idx) => {
                     let idx = xs[idx];
                     let node = &self.nodes[idx];
+
                     let (_, k) = node.path.split_at(1);
                     let (v, rem) = key.split_at(n);
                     let k = to_str(k);
@@ -98,9 +101,11 @@ impl<T> PathTrie<T> {
                 Some(idx) => {
                     let idx = xs[idx];
                     let node = &self.nodes[idx];
+
                     let k = to_str(&node.path);
                     let v = to_str(key);
                     params.insert(k, v);
+
                     return node.data.as_ref();
                 }
                 None => return None,
@@ -138,8 +143,7 @@ impl<T> PathTrie<T> {
             let xs = self.nodes[curr].children.clone();
 
             for idx in xs {
-                let n_p =
-                    unsafe { std::str::from_utf8_unchecked(&self.nodes[idx].path) }.to_owned();
+                let n_p = to_str(&self.nodes[idx].path).to_owned();
                 let num = lcs(&n_p, active);
                 let equal = eq(&n_p, active);
 
