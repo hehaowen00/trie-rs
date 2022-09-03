@@ -1,5 +1,3 @@
-#![allow(unused_must_use)]
-
 pub mod params;
 pub mod path;
 pub mod radix;

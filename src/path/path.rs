@@ -18,10 +18,8 @@ impl<T> PathTrie<T> {
 
     pub fn get<'a, 'b>(&'a self, key: &'b str) -> Option<(&T, Params<'a, 'b>)> {
         let mut params = Params::new();
-        match self.get_params(&mut params, key) {
-            Some(data) => Some((data, params)),
-            None => None,
-        }
+        let data = self.get_params(&mut params, key)?;
+        Some((data, params))
     }
 
     fn get_params<'a, 'b>(&'a self, params: &mut Params<'a, 'b>, key: &'b str) -> Option<&T> {
@@ -30,7 +28,7 @@ impl<T> PathTrie<T> {
 
         'outer: loop {
             key = if key.starts_with(b"/") {
-                key.split_at(1).1
+                &key[1..]
             } else {
                 key
             };
@@ -60,18 +58,13 @@ impl<T> PathTrie<T> {
                         let idx = xs[idx];
                         let el: &[u8] = self.nodes[idx].path.as_ref();
 
-                        if el[0] != key[0] {
-                            break;
-                        }
-
                         if el.len() < n {
                             continue;
                         }
 
                         if key.starts_with(el) {
-                            let (_, rem) = key.split_at(el.len());
                             curr = idx;
-                            key = rem;
+                            key = &key[el.len()..];
                             continue 'outer;
                         }
                     }
@@ -86,6 +79,7 @@ impl<T> PathTrie<T> {
 
                     let (_, k) = node.path.split_at(1);
                     let (v, rem) = key.split_at(n);
+
                     let k = to_str(k);
                     let v = to_str(v);
                     params.insert(k, v);

@@ -26,5 +26,4 @@ matchit-at              time:   [20.962 µs 21.076 µs 21.218 µs]
 Found 9 outliers among 100 measurements (9.00%)
   5 (5.00%) high mild
   4 (4.00%) high severe
-
 ```
