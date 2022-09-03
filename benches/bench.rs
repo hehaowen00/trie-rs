@@ -15,6 +15,14 @@ fn path_trie_bench(c: &mut Criterion) {
             }
         })
     });
+
+    c.bench_function("path-trie-get-4", |b| {
+        b.iter(|| {
+            for url in URLS_SUBSET {
+                let _ = trie.get(url);
+            }
+        })
+    });
 }
 
 criterion_group!(benches, path_trie_bench);
@@ -664,4 +672,11 @@ pub const URLS: [&str; 315] = [
     "/users/alexcrichton/starred",
     "/users/alexcrichton/subscriptions",
     "/rust-lang",
+];
+
+pub const URLS_SUBSET: [&str; 4] = [
+    "/user/repos",
+    "/repos/rust-lang/rust/stargazers",
+    "/orgs/rust-lang/public_members/nikomatsakis",
+    "/repos/rust-lang/rust/releases/1.51.0",
 ];

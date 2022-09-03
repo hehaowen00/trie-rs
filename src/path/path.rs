@@ -1,6 +1,5 @@
 use crate::params::Params;
 use slab::Slab;
-use std::time::Instant;
 
 #[derive(Debug)]
 pub struct PathTrie<T> {
@@ -26,55 +25,46 @@ impl<T> PathTrie<T> {
     }
 
     fn get_params<'a, 'b>(&'a self, params: &mut Params<'a, 'b>, key: &'b str) -> Option<&T> {
-        let mut curr = 0;
         let mut key = key;
+        let mut curr = 0;
 
         'outer: loop {
-            key = if key.starts_with("/") { &key[1..] } else { key };
+            key = if key.starts_with('/') { &key[1..] } else { key };
 
             if key.len() == 0 {
                 return self.nodes[curr].data.as_ref();
             }
 
-            let cs = &self.nodes[curr].children;
+            let lut: &str = self.nodes[curr].index.as_ref();
 
-            if cs.len() == 0 {
+            if lut.len() == 0 {
                 return None;
             }
 
-            let lut = &self.nodes[curr].index;
-            let xs = &self.nodes[curr].children;
-            let temp = find(key);
+            let xs: &[usize] = self.nodes[curr].children.as_ref();
 
-            match lut.find(&key[0..1]) {
+            let n = match key.find('/') {
+                Some(n) => n,
+                None => key.len(),
+            };
+
+            match lut.find(key.chars().next().unwrap()) {
                 Some(start) => {
                     for idx in start..lut.len() {
                         let idx = xs[idx];
-                        let p = &self.nodes[idx].path;
+                        let el = &self.nodes[idx].path;
 
-                        if &p[0..1] != &temp[0..1] {
+                        if el.chars().next().unwrap() != key.chars().next().unwrap() {
                             break;
                         }
 
-                        if p.len() < temp.len() {
+                        if el.len() < n {
                             continue;
                         }
 
-                        if key.starts_with(p) {
+                        if key.starts_with(el) {
                             curr = idx;
-                            key = &key[p.len()..];
-                            continue 'outer;
-                        }
-
-                        let a = match_left(p, temp);
-
-                        if a == 0 {
-                            break;
-                        }
-
-                        if a == p.len() && a == temp.len() {
-                            curr = idx;
-                            key = &key[a..];
+                            key = &key[el.len()..];
                             continue 'outer;
                         }
                     }
@@ -82,28 +72,25 @@ impl<T> PathTrie<T> {
                 None => {}
             }
 
-            match lut.find(&":") {
+            match lut.find(':') {
                 Some(idx) => {
                     let idx = xs[idx];
                     let node = &self.nodes[idx];
-                    params.insert(&node.path[1..], temp);
+                    params.insert(&node.path[1..], &key[0..n]);
 
                     curr = idx;
-                    key = after(key);
+                    key = &key[n..];
                     continue 'outer;
                 }
                 None => {}
             }
 
-            match lut.find(&"*") {
+            match lut.find('*') {
                 Some(idx) => {
                     let idx = xs[idx];
                     let node = &self.nodes[idx];
-                    params.insert(&node.path, temp);
-
-                    curr = idx;
-                    key = after(key);
-                    continue 'outer;
+                    params.insert(&node.path, key);
+                    return node.data.as_ref();
                 }
                 None => return None,
             }
@@ -114,7 +101,7 @@ impl<T> PathTrie<T> {
     where
         S: AsRef<str>,
     {
-        let key: Vec<_> = key.as_ref().split("/").filter(|s| s.len() != 0).collect();
+        let key: Vec<_> = key.as_ref().split('/').filter(|s| s.len() != 0).collect();
         let mut active = key.as_slice();
         let mut curr = 0;
 
@@ -222,53 +209,6 @@ impl<T> PathTrie<T> {
             active = &active[rem..];
         }
         self.sort_all();
-    }
-
-    pub fn remove(&mut self, curr: usize, key: &str) -> u8 {
-        let key = if key.starts_with("/") { &key[1..] } else { key };
-
-        if key.len() == 0 {
-            if self.nodes[curr].children.len() > 0 {
-                return 0;
-            }
-            return 1;
-        }
-
-        let mut found = false;
-        let mut index = 0;
-        let mut p = 0;
-
-        for (i, idx) in self.nodes[curr].children.iter().enumerate() {
-            let temp = find(key);
-            if self.nodes[*idx].path == temp {
-                index = *idx;
-                p = i;
-                found = true;
-                break;
-            }
-        }
-
-        if !found {
-            return 0;
-        }
-
-        let res = self.remove(index, &key[self.nodes[index].path.len()..]);
-
-        if res == 1 {
-            self.delete(index);
-            self.nodes[curr].children.remove(p);
-            return 2;
-        }
-
-        if res == 2 {
-            self.nodes[curr].children.remove(p);
-            if self.nodes[index].data.is_none() && self.nodes[index].children.len() == 0 {
-                self.nodes.remove(index);
-                return 2;
-            }
-        }
-
-        0
     }
 
     fn delete(&mut self, idx: usize) {
